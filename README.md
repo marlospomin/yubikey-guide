@@ -538,7 +538,7 @@ Below you can see a table with the available factors and their corresponding com
 | PIN but no touch required      | Entering the PIN will be required but touching the physical key will not.                         | `ssh-keygen -t ed25519-sk -O resident -O verify-required -O no-touch-required` |
 | No PIN but touch is required   | You will only need to touch the YubiKey to authenticate.                                          | `ssh-keygen -t ed25519-sk -O resident`                                         |
 | A PIN and a touch are required | This is the most secure option, it requires both the PIN and touching to be used.                 | `ssh-keygen -t ed25519-sk -O resident -O verify-required`                      |
-|                                |                                                                                                   |                                                                                |
+
 **Note:** No matter what command you select, you always will be required to touch your key when authenticating to services like GitHub and Gitlab (you may not be required to touch during `git commit`, but for pull and push operation it will require it).
 ##### Generating the Key
 
@@ -673,10 +673,65 @@ ssh-copy-id -i ~/.ssh/id_ed25519_sk.pub user@host
 ```
 
 Now you can use your key to login.
-
 ### WSL
 
-...
+In order to use WSL with full FIDO2 support you must first ensure you are using a newer kernel.
+
+Check the version:
+
+```bash
+uname -r
+```
+
+If you have version `5.15.150.1` or above you don't have to update anything (or build a custom kernel).
+
+In **WSL**:
+
+1. Create a new `udev` config file (this ensures `fido` works):
+```bash
+sudo nano /etc/udev/rules.d/99-custom-perms.rules
+```
+
+2. Insert the following:
+```bash
+SUBSYSTEM=="usb", MODE="0666"
+KERNEL=="hidraw*", SUBSYSTEM=="hidraw", TAG+="uaccess", MODE="0666"
+```
+
+3. Reload `udev`:
+
+```bash
+sudo udevadm control --reload
+```
+
+In **Windows**:
+1. Install https://github.com/dorssel/usbipd-win.
+   
+2. List available devices to share:
+```bash
+usbipd list
+```
+
+3. Find your YubiKey (`USB Input Device, Microsoft Usbccid Smartcard Reader (WUDF)`)
+
+4. Bind its `BUSID`:
+```bash
+usbipd bind --busid 1-13
+```
+
+5. Attach the key to WSL:
+```bash
+usbipd attach --wsl --busid=1-13
+```
+
+Back to **WSL**:
+
+1. Confirm the device was shared:
+```bash
+lsusb | grep Yubikey
+```
+
+You may now use your key normally (`ykman fido info` should work).
 ## Updating Keys
 
 PGP does not provide forward secrecy, meaning a compromised key may be used to decrypt all past messages. Although keys stored on YubiKey are more difficult to exploit, it is not impossible: the key and PIN could be physically compromised, or a vulnerability may be discovered in firmware or in the random number generator used to create keys, for example. Therefore, it is recommended practice to rotate Subkeys periodically.
@@ -766,8 +821,42 @@ gpg --recv $KEYID
 The validity of the GnuPG identity will be extended, allowing it to be used again for encryption and signature operations.
 ### Rotate Subkeys
 
-...
+In order to rotate/replace the Subkeys you need to create new ones:
 
+```bash
+for SUBKEY in sign encrypt auth ; do \
+  gpg --batch --pinentry-mode=loopback --passphrase "$CERTIFY_PASS" \
+      --quick-add-key "$KEYFP" "$KEY_TYPE" "$SUBKEY" "$EXPIRATION"
+done
+```
+
+**Note:** Previous Subkeys can be deleted from the identity.
+
+Finish by copying new Subkeys to YubiKey.
+
+1. Copy the new temporary working directory to encrypted storage, which is still mounted:
+
+```bash
+sudo cp -avi $GNUPGHOME /mnt/encrypted-storage
+```
+
+2. Unmount and close the encrypted volume:
+```bash
+sudo umount /mnt/encrypted-storage
+sudo cryptsetup luksClose gnupg-secrets
+```
+
+3. Export the updated public key:
+```bash
+sudo mkdir /mnt/public
+sudo mount /dev/sdb2 /mnt/public
+gpg --armor --export $KEYID | sudo tee /mnt/public/$KEYID-$(date +%F).asc
+sudo umount /mnt/public
+```
+
+4. Remove the storage device and follow the original steps to transfer new Subkeys (`4`, `5` and `6`) to YubiKey, replacing existing ones.
+
+Reboot.
 ## Reset Yubikey
 
 If PIN attempts are exceeded, the YubiKey is locked and must be Reset and set up again using the encrypted backup.
