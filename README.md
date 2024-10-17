@@ -5,7 +5,7 @@ This guide will walk you through the process of setting up your YubiKey to funct
 * Secure encryption, signature, and authentication operations (**OpenPGP**).
 * Seamlessly access SSH accounts and sign git commits (**FIDO2**).
 
-For functionalities like Personal Identity Verification (PIV), consult the official Yubico documentation.
+For functionalities like Personal Identity Verification ([PIV](https://developers.yubico.com/yubico-piv-tool/YubiKey_PIV_introduction.html)), consult the official Yubico documentation.
 
 **Disclaimer:** This guide is heavily inspired by drduh's exceptional [guide](https://github.com/drduh/YubiKey-Guide).
 ## Prerequisites 
@@ -42,13 +42,12 @@ brew install gnupg yubikey-personalization ykman pinentry-mac wget
 ```
 ### Prepare Environment
 
-Follow the steps below to setup your local environment.
+To ensure the operation's security, start by configuring a reliable GPG environment.
 
 1. Create a temporary directory and set it as the GnuPG directory:
 ```bash
 export GNUPGHOME=$(mktemp -d -t gnupg-$(date +%Y-%m-%d)-XXXXXXXXXX)
 ```
-This creates a temporary directory for storing GnuPG data. It will be automatically deleted later.
 
 2. Import or create a hardened configuration:
 ```bash
@@ -78,12 +77,11 @@ throw-keyids
 EOF
 ```
 
-^26e040
-
 3. Create your identity:
 ```bash
 export IDENTITY="YubiKey User <yubikey@example.org>"
 ```
+
 Other formats are accepted but may be incompatible with certain use cases.
 
 4. Select the desired algorithm and key size:
@@ -95,11 +93,12 @@ export KEY_TYPE=rsa4096
 ```bash
 export EXPIRATION=2y
 ```
+
 Longer periods can be set, it's up to you.
 
-6. Generate a passphrase for the Certify key. It will be used infrequently to manage Subkeys and should be very strong:
+6. Generate a passphrase for the Certify key:
 ```bash
-export CERTIFY_PASS=
+export CERTIFY_PASS=your_secure_and_long_password_here
 ```
 
 7. Confirm all environment variables before proceeding:
@@ -111,27 +110,23 @@ printf "CERTIFY_PASS: %s\n" "$CERTIFY_PASS"
 ```
 ### Create Certify Key
 
-The primary key to generate is the Certify key, which is responsible for issuing Subkeys for encryption, signature and authentication operations.
+The primary key, Certify, is used to generate Subkeys for encryption, signature, and authentication. It should be stored offline in a dedicated, secure environment to minimize the risk of compromise. Certify should only be accessed to issue or revoke Subkeys.
 
-The Certify key should be kept offline at all times and only accessed from a dedicated and secure environment to issue or revoke Subkeys.
-
-**Do not set an expiration date on the Certify key.**
+>**Do not set an expiration date on the Certify key.**
 
 1. Create the Certify key:
 ```bash
 gpg --batch --passphrase "$CERTIFY_PASS" --quick-generate-key "$IDENTITY" "$KEY_TYPE" cert never
 ```
-2. Set and view the Certify key identifier and fingerprint for use later:
+
+2. Set the Certify key identifier and fingerprint for use later:
 ```bash
 export KEYID=$(gpg -k --with-colons "$IDENTITY" | awk -F: '/^pub:/ { print $5; exit }')
-
 export KEYFP=$(gpg -k --with-colons "$IDENTITY" | awk -F: '/^fpr:/ { print $10; exit }')
-
-printf "\nKey ID: %40s\nKey FP: %40s\n\n" "$KEYID" "$KEYFP"
 ```
 ### Create Subkeys
 
-Use the following command to generate Signature, Encryption and Authentication Subkeys using the previously configured key type, passphrase and expiration:
+To create Signature, Encryption, and Authentication Subkeys, execute the following command using the previously specified key type, passphrase, and expiration:
 
 ```bash
 for SUBKEY in sign encrypt auth ; do \
@@ -139,7 +134,6 @@ for SUBKEY in sign encrypt auth ; do \
       --quick-add-key "$KEYFP" "$KEY_TYPE" "$SUBKEY" "$EXPIRATION"
 done
 ```
-### Verify Keys
 
 List available secret keys:
 
@@ -159,7 +153,7 @@ ssb   rsa4096/0xAD9E24E1B8CB9600 2024-01-01 [A] [expires: 2026-05-01]
 ```
 ### Backup
 
-First, save a copy of the Certify key, Subkeys and public key:
+To protect your keys, create a backup of Certify, Subkeys, and the public key:
 
 ```bash
 gpg --output $GNUPGHOME/$KEYID-Certify.key \
@@ -174,23 +168,18 @@ gpg --output $GNUPGHOME/$KEYID-$(date +%F).asc \
     --armor --export $KEYID
 ```
 
-**Note:** If the commands above fail to execute, remove `--pinentry-mode=loopback --passphrase "$ENV_VAR"` arguments and set them manually via the interactive menu.
+Create an encrypted backup of your keys on a portable storage device and store it offline in a secure, durable location. 
 
-Create an encrypted backup on portable storage to be kept offline in a secure and durable location.
-
-The following process is recommended to be repeated several times on multiple portable storage devices, as they are likely to fail over time.
-#### Linux
+To ensure data integrity, repeat this process multiple times using different storage devices, as they may fail over time.
 
 1. Attach a portable storage device and check its label, in this case `/dev/sdb`:
-
 ```bash
 sudo dmesg | tail
 usb-storage 3-2:1.0: USB Mass Storage device detected
 sd 2:0:0:0: [sdc] Attached SCSI removable disk
 ```
 
-2. Zero the header to prepare for encryption:
-
+2. Clear the header to prepare for encryption:
 ```bash
 sudo dd if=/dev/zero of=/dev/sdb bs=4M count=1
 ```
@@ -217,7 +206,7 @@ EOF
 
 6. Generate/choose another unique password (ideally different from the one used for the Certify key) to protect the encrypted volume:
 ```bash
-export LUKS_PASS=
+export LUKS_PASS=your_long_and_secure_password_here
 ```
 
 This passphrase will also be used infrequently to access the Certify key and should be very strong.
@@ -232,7 +221,7 @@ echo $LUKS_PASS | sudo cryptsetup -q luksFormat /dev/sdb1
 echo $LUKS_PASS | sudo cryptsetup -q luksOpen /dev/sdb1 gnupg-secrets
 ```
 
-9. Create an ext2 filesystem:
+9. Create an `ext2` filesystem:
 ```bash
 sudo mkfs.ext2 /dev/mapper/gnupg-secrets -L gnupg-$(date +%F)
 ```
@@ -261,8 +250,7 @@ You can export the keys in a couple of different ways, the easiest being sending
 gpg --send-key $KEYID
 ```
 
-Alternatively, connect another portable storage device or create a new partition on the existing one.
-#### Linux
+Alternatively, connect another portable storage device or create a new partition on the existing one and follow the steps below.
 
 1. Using the same `/dev/sdb` device as in the previous step, create a small (at least 20 Mb is recommended) partition for storing materials:
 ```bash
@@ -292,20 +280,19 @@ sudo umount /mnt/public
 
 YubiKey's PGP interface has its own PINs separate from other modules such as PIV:
 
-| Name          | Default value | Capability                                                   |
-| ------------- | ------------- | ------------------------------------------------------------ |
-| **User** PIN  | `123456`      | cryptographic operations (decrypt, sign, authenticate)       |
-| **Admin** PIN | `12345678`    | reset PIN, change Reset Code, add keys and owner information |
+| Name          | Default value | Capability                                                    |
+| ------------- | ------------- | ------------------------------------------------------------- |
+| **User** PIN  | `123456`      | Cryptographic operations (decrypt, sign, authenticate).       |
+| **Admin** PIN | `12345678`    | Reset PIN, change Reset Code, add keys and owner information. |
 
-Determine the desired PIN values. They can be shorter than the Certify key passphrase due to limited brute-forcing opportunities; the User PIN should be convenient enough to remember for every-day use.
+Select PIN values for User and Admin access. These can be shorter than the Certify key passphrase due to limited brute-force possibilities. The User PIN should be easy to remember for daily use.
 
-The User PIN must be at least 6 characters and the Admin PIN must be at least 8 characters. A maximum of 127 ASCII characters are allowed.
+Ensure the User PIN is at least 6 characters and the Admin PIN is at least 8 characters. Both PINs should be composed of no more than 127 ASCII characters.
 
 Set PINs manually or generate them, for example a 6 digit User PIN and 8 digit Admin PIN:
 
 ```bash
 export ADMIN_PIN=$(LC_ALL=C tr -dc '0-9' < /dev/urandom | fold -w8 | head -1)
-
 export USER_PIN=$(LC_ALL=C tr -dc '0-9' < /dev/urandom | fold -w6 | head -1)
 
 printf "\nAdmin PIN: %12s\nUser PIN: %13s\n\n" "$ADMIN_PIN" "$USER_PIN"
@@ -335,14 +322,14 @@ EOF
 
 3. Remove and re-insert YubiKey.
 
->Three incorrect User PIN entries will cause it to become blocked and must be unblocked with either the Admin PIN or Reset Code. Three incorrect Admin PIN or Reset Code entries will destroy data on YubiKey.
+>Entering the wrong User PIN three times will lock it. To unlock it, you'll need to use the Admin PIN or Reset Code. If you enter the wrong Admin PIN or Reset Code three times, the data on your YubiKey will be permanently deleted.
 ### Enable KDF (Optional)
 
-Key Derived Function (KDF) enables YubiKey to store the hash of PIN, preventing the PIN from being passed as plain text.
+Key Derived Function ([KDF](https://developers.yubico.com/PGP/YubiKey_5.2.3_Enhancements_to_OpenPGP_3.4.html)) enables YubiKey to store the hash of PIN, preventing the PIN from being passed as plain text.
 
-This setting must be done now, or ignored, as it cannot be setup later.
+**This setting must be configured now or will be unavailable in the future.**
 
-Enable KDF using the default Admin PIN of `12345678`:
+Enable KDF using the default Admin PIN of `12345678` (your actual PIN may differ):
 
 ```bash
 gpg --command-fd=0 --pinentry-mode=loopback --card-edit <<EOF
@@ -355,9 +342,7 @@ EOF
 
 Set the smart card details, configure the card with additional information like name, language, username, and public key URL.
 
-You must do the following on each of your keys.
-
-1. Update the login data:
+1. Update the `login` data:
 ```bash
 gpg --command-fd=0 --pinentry-mode=loopback --edit-card <<EOF
 admin
@@ -373,17 +358,17 @@ EOF
 gpg --edit-card
 ```
 
-3. Update your name:
+3. Update your `name`:
 ```bash
 gpg/card> name
 ```
 
-4. Update your preferred language:
+4. Update your preferred `language`:
 ```bash
 gpg/card> lang
 ```
 
-5. Set the URL for your public key:
+5. Set the `URL` for your public key:
 ```bash
 gpg/card> url
 ```
@@ -433,8 +418,8 @@ $ADMIN_PIN
 EOF
 ```
 
-4. Insert another Yubikey.
-5. Repeat the commands 1, 2 and 3 adding `save` before `EOF` to commit changes. Example:
+4. Unplug and Insert another Yubikey.
+5. Repeat the commands 1, 2 and 3 adding `save` before `EOF` to commit changes, like so:
 ```bash
 gpg --command-fd=0 --pinentry-mode=loopback --edit-key $KEYID <<EOF
 key 1
@@ -449,9 +434,8 @@ EOF
 >Transferring keys to YubiKey is a one-way operation which converts the on-disk key into a stub making it no longer usable to transfer to subsequent YubiKeys. 
 
 **Note:** If the command doesn't work, try removing `--command-fd=0 --pinentry-mode=loopback` arguments and pass in the values manually.
-#### Verify Transfer
 
-Verify Subkeys have been moved to YubiKey with `gpg -K` and look for `ssb>`, for example:
+Now, verify Subkeys have been moved to YubiKey with `gpg -K` and look for `ssb>`, for example:
 
 ```bash
 sec   rsa4096/0xF0F2CFEB04341FB5 2024-01-01 [C]
@@ -464,8 +448,8 @@ ssb>  rsa4096/0xAD9E24E1B8CB9600 2024-01-01 [A] [expires: 2026-05-01]
 
 The `>` after a tag indicates the key is stored on a smart card.
 
-Reboot to clear the ephemeral environment and complete setup.
-### More YubiKey Configuration
+Reboot your machine to clear the ephemeral environment and complete setup.
+### Local Configuration
 
 1. Initialize GnuPG:
 
@@ -473,13 +457,12 @@ Reboot to clear the ephemeral environment and complete setup.
 gpg -k
 ```
 
-2. Import or create a hardened configuration ([[#^26e040]]) in `~/.gnupg`.
-3. Install the required packages:
-	* Debian/Ubuntu:
-		```bash
-		sudo apt update
-		sudo apt install -y gnupg gnupg-agent scdaemon pcscd
-		``` 
+2. Import or create a hardened configuration in `~/.gnupg`.
+3. Install the required packages (commands may vary):
+```bash
+sudo apt update
+sudo apt install -y gnupg gnupg-agent scdaemon pcscd
+``` 
 
 4. Download or mount the public key:
 ```bash
@@ -498,7 +481,7 @@ gpg -k
 export KEYID=0x
 ```
 
-6. Assign ultimate trust by typing trust and selecting option 5 then quit:
+6. Assign ultimate trust by typing trust and selecting option 5:
 ```bash
 gpg --command-fd=0 --pinentry-mode=loopback --edit-key $KEYID <<EOF
 trust
@@ -511,8 +494,6 @@ EOF
 7. Remove and re-insert YubiKey.
 
 Verify the status with `gpg --card-status` which will list the available Subkeys.
-
-Your key should now be ready to use, however there are more things to setup (optional).
 #### Configure Touch
 
 By default, YubiKey will perform cryptographic operations without requiring any action from the user after the key is unlocked once with the PIN.
@@ -528,9 +509,7 @@ ykman openpgp keys set-touch aut on
 > If you set the option to `fixed`, then it won't be possible to disable the touch requirement.
 #### Setup SSH (FIDO2)
 
-Before generating a new ssh key to store on your YubiKey you must consider which additional required authentication factors you want to use. 
-
-Below you can see a table with the available factors and their corresponding command:
+Before creating a new SSH key for your YubiKey, decide which additional authentication factors you want to use. The following table lists available factors and their corresponding commands:
 
 | Factors                        | Description                                                                                       | Command                                                                        |
 | ------------------------------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
@@ -539,7 +518,7 @@ Below you can see a table with the available factors and their corresponding com
 | No PIN but touch is required   | You will only need to touch the YubiKey to authenticate.                                          | `ssh-keygen -t ed25519-sk -O resident`                                         |
 | A PIN and a touch are required | This is the most secure option, it requires both the PIN and touching to be used.                 | `ssh-keygen -t ed25519-sk -O resident -O verify-required`                      |
 
-**Note:** No matter what command you select, you always will be required to touch your key when authenticating to services like GitHub and Gitlab (you may not be required to touch during `git commit`, but for pull and push operation it will require it).
+**Note:** Regardless of the command you choose, you'll need to physically touch your YubiKey to authenticate with services like GitHub and GitLab. While you might not be prompted for touch during `git commit`, you'll definitely need it for pull and push operations.
 ##### Generating the Key
 
 Once you've decided which option fits best for your threat model you will need to run one of the commands above. 
@@ -586,16 +565,16 @@ gpg --decrypt --armor encrypted.txt
 ```
 ### GitHub
 
-In order to authenticate with GitHub you will have to add your new public key to your GitHub profile over at https://github.com/settings/keys.
+In order to authenticate with GitHub you will have to add your new public key to your GitHub [profile](https://github.com/settings/keys).
 
-1. Retrieve the key pair at anytime by running:
+1. To retrieve your key pair at any time, run the following command:
 
 ```bash
 cd ~/.ssh
 ssh-keygen -K
 ```
 
-2. Remove `_rk` from the key name to allow ssh to automatically find and use your key. 
+2. Remove `_rk` from the key name to allow SSH to automatically find and use your key. 
 3. Copy the public key directly from the newly added files to the current folder, for example, `id_ed25519_sk.pub`.
 4. Add it to your profile.
 
@@ -606,9 +585,9 @@ ssh -T git@github.com
 ```
 
 If this worked correctly you should be greeted by a welcoming message.
-#### Code Signing
+#### Git Signing
 
-To be able to sign commits you must first configure Git.
+To be able to sign tags and commits you must first configure Git.
 
 1. Set Git's GPG format to SSH:
 ```bash
@@ -631,16 +610,18 @@ git config --global user.signingkey ~/.ssh/id_ed25519_sk.pub
 All your commits and tags will now be signed.
 ### SSH
 
-If you plan on using the key to access private servers (such as VPS, local machine, etc.) you can either use the key you just generated (assuming you didn't skip the section) or generate a new one using the commands provided.
+If you need to use your key to access private servers (like VPS or local machines), you can either use the key you just generated.
 
-Update the SSH server (your server) to enforce user verification.
+>The section below is entirely optional.
+
+To enforce user presence update the SSH server (your server, VPS, etc.).
 
 1. Edit the configuration file:
 ```bash
 sudo nano /etc/ssh/sshd_config
 ```
 
-2. Add the following at the bottom of the file (only if you want to validate user presence):
+2. Add the following at the bottom of the file:
 ```bash
 PubkeyAuthOptions verify-required
 ```
@@ -650,7 +631,7 @@ PubkeyAuthOptions verify-required
 sudo systemctl restart sshd
 ```
 
-A hardened configuration would look something like:
+A robust configuration might look like this:
 
 ```bash
 # Support public key cryptography (includes FIDO2)
@@ -666,16 +647,16 @@ PasswordAuthentication no
 PermitEmptyPasswords no
 ```
 
-Now you can add your public key to the `authorized_keys` file.
+Add your public key to the `authorized_keys` file.
 
 ```bash
 ssh-copy-id -i ~/.ssh/id_ed25519_sk.pub user@host
 ```
 
-Now you can use your key to login.
+Now you can use your key to login normally.
 ### WSL
 
-In order to use WSL with full FIDO2 support you must first ensure you are using a newer kernel.
+To fully utilize FIDO2 support with WSL, make sure you're running a recent kernel version.
 
 Check the version:
 
@@ -683,38 +664,35 @@ Check the version:
 uname -r
 ```
 
-If you have version `5.15.150.1` or above you don't have to update anything (or build a custom kernel).
+If you have version `5.15.150.1` or above you don't have to update anything (if you do not, make sure to update it using the `wsl --update` command).
 
 In **WSL**:
 
-1. Create a new `udev` config file (this ensures `fido` works):
+1. Create a new `udev` config file:
 ```bash
 sudo nano /etc/udev/rules.d/99-custom-perms.rules
 ```
 
-2. Insert the following:
+2. Insert the following and save the file:
 ```bash
 SUBSYSTEM=="usb", MODE="0666"
 KERNEL=="hidraw*", SUBSYSTEM=="hidraw", TAG+="uaccess", MODE="0666"
 ```
 
 3. Reload `udev`:
-
 ```bash
 sudo udevadm control --reload
 ```
 
 In **Windows**:
 1. Install https://github.com/dorssel/usbipd-win.
-   
 2. List available devices to share:
 ```bash
 usbipd list
 ```
 
-3. Find your YubiKey (`USB Input Device, Microsoft Usbccid Smartcard Reader (WUDF)`)
-
-4. Bind its `BUSID`:
+3. Find your YubiKey (`USB Input Device, Microsoft Usbccid Smartcard Reader (WUDF)`) `BUSID`.
+4. Bind it:
 ```bash
 usbipd bind --busid 1-13
 ```
@@ -724,32 +702,31 @@ usbipd bind --busid 1-13
 usbipd attach --wsl --busid=1-13
 ```
 
-Back to **WSL**:
+Back in **WSL**:
 
 1. Confirm the device was shared:
 ```bash
 lsusb | grep Yubikey
 ```
 
-You may now use your key normally (`ykman fido info` should work).
+You may now use your key without any problems (`ykman fido info` should work).
 ## Updating Keys
 
-PGP does not provide forward secrecy, meaning a compromised key may be used to decrypt all past messages. Although keys stored on YubiKey are more difficult to exploit, it is not impossible: the key and PIN could be physically compromised, or a vulnerability may be discovered in firmware or in the random number generator used to create keys, for example. Therefore, it is recommended practice to rotate Subkeys periodically.
+While PGP keys stored on YubiKeys offer enhanced security, they're not invulnerable. Physical compromise of the key or PIN, or vulnerabilities in firmware or random number generation, could potentially expose past messages. Therefore, regular Subkey rotation is recommended.
 
-When a Subkey expires, it can either be renewed or replaced. Both actions require access to the Certify key.
+When a Subkey expires, you can either renew or replace it. Both actions require access to the Certify key.
 
-Renewing Subkeys by updating expiration indicates continued possession of the Certify key and is more convenient.
+Renewing Subkeys by updating their expiration is more convenient, as it signals continued possession of the Certify key.
 
-Replacing Subkeys is less convenient but potentially more secure: the new Subkeys will not be able to decrypt previous messages, authenticate with SSH, etc. Contacts will need to receive the updated public key and any encrypted secrets need to be decrypted and re-encrypted to new Subkeys to be usable. This process is functionally equivalent to losing the YubiKey and provisioning a new one.
+Replacing Subkeys, although less convenient, offers enhanced security. New Subkeys cannot decrypt previous messages, authenticate with SSH, etc. Contacts will need updated public keys, and encrypted secrets must be decrypted and re-encrypted using the new Subkeys. This process is similar to losing and reprovisioning a YubiKey.
 
-Neither rotation method is superior and it is up to personal philosophy on identity management and individual threat modeling to decide which one to use, or whether to expire Subkeys at all. Ideally, Subkeys would be ephemeral: used only once for each unique encryption, signature and authentication event, however in practice that is not really practical nor worthwhile with YubiKey. Advanced users may dedicate an air-gapped machine for frequent credential rotation.
+The choice between renewal and replacement depends on your personal identity management philosophy and threat assessment.
 
-To renew or rotate Subkeys, follow the same process as generating keys: boot to a secure environment, install required software and disable networking.
+To renew or rotate Subkeys, follow the same process as generating keys: boot to a secure environment, install required software and disable networking (optional).
 
 Connect the portable storage device with the Certify key and identify the disk label.
 
 1. Decrypt and mount the encrypted volume:
-
 ```bash
 sudo cryptsetup luksOpen /dev/sdc1 gnupg-secrets
 sudo mkdir /mnt/encrypted-storage
@@ -757,14 +734,12 @@ sudo mount /dev/mapper/gnupg-secrets /mnt/encrypted-storage
 ```
 
 2. Mount the non-encrypted public partition:
-
 ```bash
 sudo mkdir /mnt/public
 sudo mount /dev/sdc2 /mnt/public
 ```
 
 3. Copy the original private key materials to a temporary working directory:
-
 ```bash
 export GNUPGHOME=$(mktemp -d -t gnupg-$(date +%Y-%m-%d)-XXXXXXXXXX)
 cd $GNUPGHOME
@@ -772,7 +747,6 @@ cp -avi /mnt/encrypted-storage/gnupg-*/* $GNUPGHOME
 ```
 
 4. Confirm the identity is available, set the key id and fingerprint:
-
 ```bash
 gpg -K
 export KEYID=$(gpg -k --with-colons "$IDENTITY" | awk -F: '/^pub:/ { print $5; exit }')
@@ -780,23 +754,20 @@ export KEYFP=$(gpg -k --with-colons "$IDENTITY" | awk -F: '/^fpr:/ { print $10; 
 ```
 
 5. Recall the Certify key passphrase and set it, for example:
-
 ```bash
-export CERTIFY_PASS=
+export CERTIFY_PASS=your_certify_password_here
 ```
 
 6. See the next section(s).
 ### Renew Subkeys
 
-1. Determine the updated expiration, for example:
-
+1. Determine the updated expiration:
 ```bash
 export EXPIRATION=2026-09-01
 export EXPIRATION=2y
 ```
 
 2. Renew the Subkeys:
-
 ```bash
 gpg --batch --pinentry-mode=loopback \
   --passphrase "$CERTIFY_PASS" --quick-set-expire "$KEYFP" "$EXPIRATION" \
@@ -804,13 +775,11 @@ gpg --batch --pinentry-mode=loopback \
 ```
 
 3. Export the updated public key:
-
 ```bash
 gpg --armor --export $KEYID | sudo tee /mnt/public/$KEYID-$(date +%F).asc
 ```
 
 4. Transfer the public key to the destination host and import it or publish to a public key server and download it:
-
 ```bash
 gpg --import /mnt/public/*.asc
 
@@ -835,7 +804,6 @@ done
 Finish by copying new Subkeys to YubiKey.
 
 1. Copy the new temporary working directory to encrypted storage, which is still mounted:
-
 ```bash
 sudo cp -avi $GNUPGHOME /mnt/encrypted-storage
 ```
@@ -856,7 +824,7 @@ sudo umount /mnt/public
 
 4. Remove the storage device and follow the original steps to transfer new Subkeys (`4`, `5` and `6`) to YubiKey, replacing existing ones.
 
-Reboot.
+5. Reboot.
 ## Reset Yubikey
 
 If PIN attempts are exceeded, the YubiKey is locked and must be Reset and set up again using the encrypted backup.
