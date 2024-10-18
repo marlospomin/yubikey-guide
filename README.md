@@ -8,6 +8,34 @@ This guide will walk you through the process of setting up your YubiKey to funct
 For functionalities like Personal Identity Verification ([PIV](https://developers.yubico.com/yubico-piv-tool/YubiKey_PIV_introduction.html)), consult the official Yubico documentation.
 
 **Disclaimer:** This guide is heavily inspired by drduh's exceptional [guide](https://github.com/drduh/YubiKey-Guide).
+
+- [Prerequisites](#prerequisites)
+- [Setup](#setup)
+	- [Install Software](#install-software)
+	- [Prepare Environment](#prepare-environment)
+	- [Create Certify Key](#create-certify-key)
+	- [Create Subkeys](#create-subkeys)
+	- [Backup](#backup)
+	- [Export Public Key](#export-public-key)
+- [Configure YubiKey](#configure-yubikey)
+	- [Enable KDF (Optional)](#enable-kdf-(optional))
+	- [Set Attributes](#set-attributes)
+	- [Transfer Subkeys](#transfer-subkeys)
+	- [Local Configuration](#local-configuration)
+		- [Configure Touch](#configure-touch)
+		- [Setup SSH (FIDO2)]($setup-ssh-(fido2))
+			- [Create Key Pair](#create-key-pair)
+			- [SSH Agent Setup](#ssh-agent-setup)
+- [Using YubiKey](#using-yubikey)
+	- [GitHub](#github)
+		- [Git Signing](#git-signing)
+	- [SSH](#ssh)
+	- [WSL](#wsl)
+- [Updating Keys](#updating-keys)
+	- [Renew Subkeys](#renew-subkeys)
+	- [Rotate Subkeys](#rotate-subkeys)
+- [Reset Yubikey](#reset-yubikey)
+- [Additional Resources](#additional-resources)
 ## Prerequisites 
 
 To embark on your YubiKey journey, you'll need the following:
@@ -98,7 +126,7 @@ Longer periods can be set, it's up to you.
 
 6. Generate a passphrase for the Certify key:
 ```bash
-export CERTIFY_PASS=your_secure_and_long_password_here
+export CERTIFY_PASS=#your_secure_and_long_password_here
 ```
 
 7. Confirm all environment variables before proceeding:
@@ -206,7 +234,7 @@ EOF
 
 6. Generate/choose another unique password (ideally different from the one used for the Certify key) to protect the encrypted volume:
 ```bash
-export LUKS_PASS=your_long_and_secure_password_here
+export LUKS_PASS=#your_long_and_secure_password_here
 ```
 
 This passphrase will also be used infrequently to access the Certify key and should be very strong.
@@ -467,7 +495,7 @@ sudo apt install -y gnupg gnupg-agent scdaemon pcscd
 4. Download or mount the public key:
 ```bash
 sudo mkdir /mnt/public
-sudo mount /dev/sdc2 /mnt/public
+sudo mount /dev/sdb2 /mnt/public
 gpg --import /mnt/public/*.asc
 ```
 
@@ -519,7 +547,7 @@ Before creating a new SSH key for your YubiKey, decide which additional authenti
 | A PIN and a touch are required | This is the most secure option, it requires both the PIN and touching to be used.                 | `ssh-keygen -t ed25519-sk -O resident -O verify-required`                      |
 
 **Note:** Regardless of the command you choose, you'll need to physically touch your YubiKey to authenticate with services like GitHub and GitLab. While you might not be prompted for touch during `git commit`, you'll definitely need it for pull and push operations.
-##### Generating the Key
+##### Create Key Pair
 
 Once you've decided which option fits best for your threat model you will need to run one of the commands above. 
 
@@ -728,7 +756,7 @@ Connect the portable storage device with the Certify key and identify the disk l
 
 1. Decrypt and mount the encrypted volume:
 ```bash
-sudo cryptsetup luksOpen /dev/sdc1 gnupg-secrets
+sudo cryptsetup luksOpen /dev/sdb1 gnupg-secrets
 sudo mkdir /mnt/encrypted-storage
 sudo mount /dev/mapper/gnupg-secrets /mnt/encrypted-storage
 ```
@@ -736,7 +764,7 @@ sudo mount /dev/mapper/gnupg-secrets /mnt/encrypted-storage
 2. Mount the non-encrypted public partition:
 ```bash
 sudo mkdir /mnt/public
-sudo mount /dev/sdc2 /mnt/public
+sudo mount /dev/sdb2 /mnt/public
 ```
 
 3. Copy the original private key materials to a temporary working directory:
@@ -755,7 +783,7 @@ export KEYFP=$(gpg -k --with-colons "$IDENTITY" | awk -F: '/^fpr:/ { print $10; 
 
 5. Recall the Certify key passphrase and set it, for example:
 ```bash
-export CERTIFY_PASS=your_certify_password_here
+export CERTIFY_PASS=#your_certify_password_here
 ```
 
 6. See the next section(s).
