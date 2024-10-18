@@ -34,7 +34,7 @@ For functionalities like Personal Identity Verification ([PIV](https://developer
 - [Updating Keys](#updating-keys)
 	- [Renew Subkeys](#renew-subkeys)
 	- [Rotate Subkeys](#rotate-subkeys)
-- [Reset Yubikey](#reset-yubikey)
+- [Reset YubiKey](#reset-yubikey)
 - [Additional Resources](#additional-resources)
 ## Prerequisites 
 
@@ -853,7 +853,7 @@ sudo umount /mnt/public
 4. Remove the storage device and follow the original steps to transfer new Subkeys (`4`, `5` and `6`) to YubiKey, replacing existing ones.
 
 5. Reboot.
-## Reset Yubikey
+## Reset YubiKey
 
 If PIN attempts are exceeded, the YubiKey is locked and must be Reset and set up again using the encrypted backup.
 
